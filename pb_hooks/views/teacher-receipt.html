@@ -1,0 +1,107 @@
+{{define "title"}}
+{{.nickname}} | {{.date}}
+{{end}}
+
+{{define "body"}}
+<div style="max-width: 40rem;" id="print">
+    <div class="p-10">
+        <div class="w-full flex gap-10">
+            <div class='flex-1'>
+                <img src="https://merakiui.com/images/logo.svg" height="50px" width="50px" />
+            </div>
+            <div class="flex flex-col text-sm">
+                <div class="font-semibold">Invoice Type</div>
+                <div>{{.type}}</div>
+            </div>
+            <div class="flex flex-col text-sm">
+                <div class="font-semibold">Billed To</div>
+                <div>{{.nickname}}</div>
+            </div>
+            <div class="flex flex-col text-sm">
+                <div class="font-semibold">Billed AT</div>
+                <div>{{.date}}</div>
+            </div>
+        </div>
+        <div class="mt-8 flow-root">
+            <table class="w-full">
+                <colgroup>
+                    <col class="w-1/4" />
+                    <col class="w-1/4" />
+                    <col class="w-1/4" />
+                    <col class="w-1/4" />
+                </colgroup>
+                <thead class="border-b border-base-300">
+                    <tr class='text-sm font-semibold'>
+                        <th scope="col" class="py-3 text-left">
+                            Class Mins
+                        </th>
+                        <th scope="col" class="px-3 text-right">
+                            Class Price
+                        </th>
+                        <th scope="col" class="px-3 text-right">
+                            Total Classes
+                        </th>
+                        <th scope="col" class="py-3 pl-3 text-right">
+                            Total Price
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .class_logs}}
+                    <tr class="border-b border-base-300">
+                        <td class="py-3 text-left text-sm text-base-content/75">
+                            {{.class_mins}} Min
+                        </td>
+                        <td class="px-3 text-right text-sm text-base-content/75">
+                            {{.students_price}} TK
+                        </td>
+                        <td class="px-3 text-right text-sm text-base-content/75">
+                            {{.total_classes}}
+                        </td>
+                        <td class="pl-3 text-right text-sm text-base-content/75">
+                            {{.total_price}} TK
+                        </td>
+                    </tr>
+                    {{else}} {{end}}
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th scope="row" colSpan="3"
+                            class="pr-3 pt-6 text-right text-sm font-normal text-base-content/75 table-cell">
+                            Subtotal
+                        </th>
+                        <td class="pl-3 pt-6 text-right text-sm text-base-content/75">
+                            {{.due_amount}} TK
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row" colSpan="3"
+                            class="pr-3 pt-4 text-right text-sm font-normal text-base-content/75 table-cell">
+                            Discount
+                        </th>
+                        <td class="pl-3 pt-4 text-right text-sm text-base-content/75">
+                            0
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row" colSpan="3" class="pr-3 pt-4 text-right text-sm font-semibold table-cell">
+                            Total
+                        </th>
+                        <td class="pl-3 pt-4 text-right text-sm font-semibold">
+                            {{.due_amount}} TK
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <div class="border-t border-base-300 pt-4 text-xs text-base-content/75 text-center mt-10 uppercase">
+            INVOICE NO: {{.type}}-{{.id}}
+        </div>
+        <div class="w-full flex justify-center mt-3 print-button ">
+            <button class="px-3 py-1 bg-gray-300 rounded text-sm" type="button" onClick="printDiv('print')">Print This
+                Page
+            </button>
+        </div>
+    </div>
+</div>
+{{end}}
