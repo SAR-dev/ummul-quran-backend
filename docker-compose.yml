@@ -1,8 +1,8 @@
 version: "3.7"
 services:
-  pocketbase:
+  app:
     image: ghcr.io/muchobien/pocketbase:latest
-    container_name: pocketbase
+    container_name: ummul-quran-backend
     restart: unless-stopped
     command:
       - --encryptionEnv # optional
