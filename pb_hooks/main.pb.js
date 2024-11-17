@@ -72,7 +72,7 @@ routerAdd("POST", "/api/send-wh-message", (c) => {
 
     let error = true
     const res = $http.send({
-        url: "172.86.84.229:3000/api/sendText",
+        url: "104.194.132.235:3000/api/sendText",
         method: "POST",
         body: JSON.stringify({
             "chatId": `${data.whatsapp_no}@c.us`,
