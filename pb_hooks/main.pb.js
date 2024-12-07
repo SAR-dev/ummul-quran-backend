@@ -193,7 +193,7 @@ routerAdd("POST", "/api/class-logs/create-by-routine", (c) => {
             const records = $app.dao().findRecordsByFilter(
                 "class_logs",
                 // `start_at >= '${start_at_str}' && start_at <= '${finish_at_str}' && finished = false`
-                `start_at >= '${start_at_str}' && finished = false`
+                `start_at >= '${start_at_str}' && finished = false && student.id = '${payload.student}'`
             )
             for (let record of records) {
                 txDao.deleteRecord(record)
