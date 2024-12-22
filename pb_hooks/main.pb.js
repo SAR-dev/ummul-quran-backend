@@ -400,6 +400,22 @@ routerAdd("POST", "/api/generate-student-invoices", (c) => {
     )
 
     $app.dao().runInTransaction((txDao) => {
+        const unq_id = Date.now()
+        const parent_invoices = $app.dao().findCollectionByNameOrId("invoices")
+        const parent_record = new Record(parent_invoices)
+        parent_record.set("unq_id", unq_id)
+        parent_record.set("type", "STUDENT")
+        txDao.saveRecord(parent_record)
+        const parent_invoice = txDao.findRecordsByFilter(
+            "invoices",
+            `unq_id = '${unq_id}'`,
+            "-created",
+            1,
+            0,
+        )
+        const parent_invoice_id = parent_invoice[0].id
+
+
         for (let student of students) {
             // clear unfinished class logs
             const unfinished_class_logs = txDao.findRecordsByFilter(
@@ -426,6 +442,7 @@ routerAdd("POST", "/api/generate-student-invoices", (c) => {
             const record = new Record(student_invoices)
             record.set("student", student.get("id"))
             record.set("due_amount", due_amount)
+            record.set("invoice", parent_invoice_id)
             txDao.saveRecord(record)
 
             // find the invoice
@@ -469,6 +486,21 @@ routerAdd("POST", "/api/generate-teacher-invoices", (c) => {
     )
 
     $app.dao().runInTransaction((txDao) => {
+        const unq_id = Date.now()
+        const parent_invoices = $app.dao().findCollectionByNameOrId("invoices")
+        const parent_record = new Record(parent_invoices)
+        parent_record.set("unq_id", unq_id)
+        parent_record.set("type", "TEACHER")
+        txDao.saveRecord(parent_record)
+        const parent_invoice = txDao.findRecordsByFilter(
+            "invoices",
+            `unq_id = '${unq_id}'`,
+            "-created",
+            1,
+            0,
+        )
+        const parent_invoice_id = parent_invoice[0].id
+
         for (let teacher of teachers) {
             // clear unfinished class logs
             const unfinished_class_logs = txDao.findRecordsByFilter(
@@ -495,6 +527,7 @@ routerAdd("POST", "/api/generate-teacher-invoices", (c) => {
             const record = new Record(teacher_invoices)
             record.set("teacher", teacher.get("id"))
             record.set("due_amount", due_amount)
+            record.set("invoice", parent_invoice_id)
             txDao.saveRecord(record)
 
             // find the invoice
@@ -719,6 +752,46 @@ routerAdd("GET", "/api/get-invoiced-teachers", (c) => {
 
     return c.json(200, result)
 })
+
+routerAdd("DELETE", "/api/invoices/:id", (c) => {
+    const invoice = $app.dao().findFirstRecordByFilter(
+        "invoices",
+        `id = '${c.pathParam("id")}'`
+    )
+
+    if (invoice == null) {
+        throw new ForbiddenError()
+    }
+
+    $app.dao().runInTransaction((txDao) => {
+        if(invoice.get("type") == "TEACHER"){
+            const records = $app.dao().findRecordsByFilter(
+                "teacher_invoices",
+                `invoice.id = '${c.pathParam("id")}'`
+            )
+            for (let record of records) {
+                txDao.deleteRecord(record)
+            }
+        }
+
+        if(invoice.get("type") == "STUDENT"){
+            const records = txDao.findRecordsByFilter(
+                "student_invoices",
+                `invoice.id = '${c.pathParam("id")}'`
+            )
+            for (let record of records) {
+                txDao.deleteRecord(record)
+            }
+        }
+
+        txDao.deleteRecord(invoice)
+
+    })
+
+    return c.json(200, { "message": "Invoice deleted" })
+})
+
+// HTML render
 
 routerAdd("GET", "/student-receipt/:id", (c) => {
     const invoice = $app.dao().findFirstRecordByFilter(
