@@ -418,6 +418,9 @@ routerAdd("POST", "/api/generate-student-invoices", (c) => {
 
             // calculate due amount
             const due_amount = student_class_logs.reduce((sum, record) => sum + record.publicExport().cp_students_price, 0);
+            
+            // no invoice for zero amount
+            if(due_amount <= 0) continue;
 
             // create invoice
             const record = new Record(student_invoices)
@@ -485,6 +488,9 @@ routerAdd("POST", "/api/generate-teacher-invoices", (c) => {
             // calculate due amount
             const due_amount = teacher_class_logs.reduce((sum, record) => sum + record.publicExport().cp_teachers_price, 0);
 
+            // no invoice for zero amount
+            if(due_amount <= 0) continue;
+            
             // create invoice
             const record = new Record(teacher_invoices)
             record.set("teacher", teacher.get("id"))
