@@ -106,6 +106,14 @@ routerAdd("POST", "/api/send-wh-message", (c) => {
 routerAdd("POST", "/api/class-logs/create-by-routine", (c) => {
     const payload = $apis.requestInfo(c).data
 
+    const teacherByStudent = $app.dao().findFirstRecordByData("students", "id", payload.student).get("teacher")
+    const teacherByAuth = $app.dao().findFirstRecordByData("teachers", "user", c.get("authRecord").get("id")).get("id")
+
+    const canAccess = teacherByStudent == teacherByAuth
+    if (!canAccess) {
+        throw new ForbiddenError()
+    }
+
     // helpers
 
     const dayNames = [
@@ -204,6 +212,7 @@ routerAdd("POST", "/api/class-logs/create-by-routine", (c) => {
         for (let data of payloads) {
             const record = new Record(collection)
 
+            record.set("cp_teacher", teacherByAuth)
             record.set("student", payload.student)
             record.set("start_at", data.start_at)
             record.set("finish_at", data.finish_at)
@@ -212,14 +221,6 @@ routerAdd("POST", "/api/class-logs/create-by-routine", (c) => {
 
             txDao.saveRecord(record)
         }
-
-        const teacherByStudent = $app.dao().findFirstRecordByData("students", "id", payload.student).get("teacher")
-        const teacherByAuth = $app.dao().findFirstRecordByData("teachers", "user", c.get("authRecord").get("id")).get("id")
-
-        const canAccess = teacherByStudent == teacherByAuth
-        if (!canAccess) {
-            throw new ForbiddenError()
-        }
     })
 
     return c.json(200, { "message": "Class log created" })
@@ -227,6 +228,14 @@ routerAdd("POST", "/api/class-logs/create-by-routine", (c) => {
 
 routerAdd("POST", "/api/class-logs/create-by-dates", (c) => {
     const payload = $apis.requestInfo(c).data
+
+    const teacherByStudent = $app.dao().findFirstRecordByData("students", "id", payload.student).get("teacher")
+    const teacherByAuth = $app.dao().findFirstRecordByData("teachers", "user", c.get("authRecord").get("id")).get("id")
+
+    const canAccess = teacherByStudent == teacherByAuth
+    if (!canAccess) {
+        throw new ForbiddenError()
+    }
 
     // helpers
 
@@ -273,6 +282,7 @@ routerAdd("POST", "/api/class-logs/create-by-dates", (c) => {
         for (let data of payloads) {
             const record = new Record(collection)
 
+            record.set("cp_teacher", teacherByAuth)
             record.set("student", payload.student)
             record.set("start_at", data.start_at)
             record.set("finish_at", data.finish_at)
@@ -280,14 +290,6 @@ routerAdd("POST", "/api/class-logs/create-by-dates", (c) => {
             if (checkData == null) checkData = record;
 
             txDao.saveRecord(record)
-        }
-
-        const teacherByStudent = $app.dao().findFirstRecordByData("students", "id", payload.student).get("teacher")
-        const teacherByAuth = $app.dao().findFirstRecordByData("teachers", "user", c.get("authRecord").get("id")).get("id")
-
-        const canAccess = teacherByStudent == teacherByAuth
-        if (!canAccess) {
-            throw new ForbiddenError()
         }
     })
 
