@@ -1,7 +1,4 @@
 # Ignore the pb_data folder and all its contents
-pb_data/**/*
-pb_data/
-pb_data/*.db
 
 # Ignore the node_modules folder
 node_modules/

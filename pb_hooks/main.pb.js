@@ -1,9 +1,87 @@
+cronAdd("start-notify", "*/1 * * * *", () => {
+    const currentTime = new Date();
+    const tenMinutesLaterTime = new Date(currentTime.getTime() + 10 * 60 * 1000);
+
+    $app.runInTransaction((txDao) => {
+        // class not started yet, will be started within 10 minutes and not notified
+        const startNotificationNotSent = txDao.findRecordsByFilter(
+            "class_logs",
+            `start_at < '${tenMinutesLaterTime.toISOString()}' && start_notified = false && started = false`
+        )
+        for (let record of startNotificationNotSent) {
+            txDao.expandRecord(record, ["student", "cp_teacher"], null)
+            const student = record.publicExport().expand.student;
+            const teacher = record.publicExport().expand.cp_teacher;
+            const mobile_no = teacher.get("mobile_no").replace(/\D/g, '');
+            const message = `You have a class soon to start of ${student.get("nickname")}. URL: https://web.ummulquran.live/teacher/class-details/${record.get("id")}`
+
+            // console.log(message)
+            const res = $http.send({
+                url: "http://104.194.132.235:3000/api/sendText",
+                method: "POST",
+                body: JSON.stringify({
+                    "chatId": `${mobile_no}@c.us`,
+                    "text": `${message}`,
+                    "session": "default"
+                }),
+                headers: { "content-type": "application/json" },
+                timeout: 20 // in seconds
+            });
+            
+            if (res.statusCode === 201) {
+                const found = txDao.findRecordById("class_logs", record.get("id"))
+                found.set("start_notified", true)
+                txDao.save(found)
+            }
+        }
+    })
+})
+
+cronAdd("finish-notify", "*/10 * * * *", () => {
+    const currentTime = new Date();
+    const tenMinutesBeforeTime = new Date(currentTime.getTime() - 10 * 60 * 1000);
+
+    $app.runInTransaction((txDao) => {
+        // class not finished yet and not notified
+        const finishNotificationNotSent = txDao.findRecordsByFilter(
+            "class_logs",
+            `finish_at < '${tenMinutesBeforeTime.toISOString()}' && started = true && finish_notified = false && finished = false`
+        )
+        for (let fd of finishNotificationNotSent) {
+            txDao.expandRecord(record, ["student", "cp_teacher"], null)
+            const student = record.publicExport().expand.student;
+            const teacher = record.publicExport().expand.cp_teacher;
+            const mobile_no = teacher.get("mobile_no").replace(/\D/g, '');
+            const message = `You have a class pending of ${student.get("nickname")}. URL: https://web.ummulquran.live/teacher/class-details/${record.get("id")}`
+
+            // console.log(message)
+            const res = $http.send({
+                url: "http://104.194.132.235:3000/api/sendText",
+                method: "POST",
+                body: JSON.stringify({
+                    "chatId": `${mobile_no}@c.us`,
+                    "text": `${message}`,
+                    "session": "default"
+                }),
+                headers: { "content-type": "application/json" },
+                timeout: 20 // in seconds
+            });
+
+            if (res.statusCode === 201) {
+                const found = txDao.findRecordById("class_logs", fd.get("id"))
+                found.set("finish_notified", true)
+                txDao.save(found)
+            }
+        }
+    })
+})
+
 routerAdd("POST", "/api/send-wh-message", (c) => {
-    const payload = $apis.requestInfo(c).data
+    const payload = c.requestInfo().body
 
     // allow admin only
 
-    const admin = !!c.get("admin")
+    const admin = !!c.auth.get("superadmin")
     if (!admin) throw ForbiddenError()
 
     if (!["TEACHER", "STUDENT"].includes(payload.type)) throw ForbiddenError();
@@ -24,11 +102,11 @@ routerAdd("POST", "/api/send-wh-message", (c) => {
     ];
 
     if (payload.type == "TEACHER") {
-        const record = $app.dao().findFirstRecordByFilter(
+        const record = $app.findFirstRecordByFilter(
             "teacher_invoices",
             `id = '${payload.id}'`
         )
-        $app.dao().expandRecord(record, ["teacher"], null)
+        $app.expandRecord(record, ["teacher"], null)
 
         if (record == null) {
             throw new ForbiddenError()
@@ -43,11 +121,11 @@ routerAdd("POST", "/api/send-wh-message", (c) => {
     }
 
     if (payload.type == "STUDENT") {
-        const record = $app.dao().findFirstRecordByFilter(
+        const record = $app.findFirstRecordByFilter(
             "student_invoices",
             `id = '${payload.id}'`
         )
-        $app.dao().expandRecord(record, ["student"], null)
+        $app.expandRecord(record, ["student"], null)
 
         if (record == null) {
             throw new ForbiddenError()
@@ -72,7 +150,7 @@ routerAdd("POST", "/api/send-wh-message", (c) => {
 
     let error = true
     const res = $http.send({
-        url: "104.194.132.235:3000/api/sendText",
+        url: "http://104.194.132.235:3000/api/sendText",
         method: "POST",
         body: JSON.stringify({
             "chatId": `${data.whatsapp_no}@c.us`,
@@ -95,19 +173,18 @@ routerAdd("POST", "/api/send-wh-message", (c) => {
     if (error) updateData.status = "ERROR"
     if (!error) updateData.status = "SUCCESS"
 
-    const record = $app.dao().findRecordById(updateData.table, updateData.id)
+    const record = $app.findRecordById(updateData.table, updateData.id)
     record.set("status", updateData.status)
-    $app.dao().saveRecord(record)
+    $app.save(record)
 
     c.json(200, { "message": "Request processed!" });
 });
 
-
 routerAdd("POST", "/api/class-logs/create-by-routine", (c) => {
-    const payload = $apis.requestInfo(c).data
+    const payload = c.requestInfo().body
 
-    const teacherByStudent = $app.dao().findFirstRecordByData("students", "id", payload.student).get("teacher")
-    const teacherByAuth = $app.dao().findFirstRecordByData("teachers", "user", c.get("authRecord").get("id")).get("id")
+    const teacherByStudent = $app.findFirstRecordByData("students", "id", payload.student).get("teacher")
+    const teacherByAuth = $app.findFirstRecordByData("teachers", "user", c.auth.get("id")).get("id")
 
     const canAccess = teacherByStudent == teacherByAuth
     if (!canAccess) {
@@ -191,14 +268,14 @@ routerAdd("POST", "/api/class-logs/create-by-routine", (c) => {
         })
     );
 
-    const collection = $app.dao().findCollectionByNameOrId("class_logs")
+    const collection = $app.findCollectionByNameOrId("class_logs")
 
-    $app.dao().runInTransaction((txDao) => {
+    $app.runInTransaction((txDao) => {
         if (payload.new_routine) {
             const start_at_str = `${start_date.toISOString().slice(0, 10)} 00:00:00.000${payload.offset_hh_mm}`
             // const finish_at_str = `${finish_date.toISOString().slice(0, 10)} 00:00:00.000${payload.offset_hh_mm}`;
 
-            const records = $app.dao().findRecordsByFilter(
+            const records = $app.findRecordsByFilter(
                 "class_logs",
                 // `start_at >= '${start_at_str}' && start_at <= '${finish_at_str}' && finished = false`
                 `start_at >= '${start_at_str}' && finished = false && student.id = '${payload.student}'`
@@ -219,7 +296,7 @@ routerAdd("POST", "/api/class-logs/create-by-routine", (c) => {
 
             if (checkData == null) checkData = record;
 
-            txDao.saveRecord(record)
+            txDao.save(record)
         }
     })
 
@@ -227,10 +304,10 @@ routerAdd("POST", "/api/class-logs/create-by-routine", (c) => {
 })
 
 routerAdd("POST", "/api/class-logs/create-by-dates", (c) => {
-    const payload = $apis.requestInfo(c).data
+    const payload = c.requestInfo().body
 
-    const teacherByStudent = $app.dao().findFirstRecordByData("students", "id", payload.student).get("teacher")
-    const teacherByAuth = $app.dao().findFirstRecordByData("teachers", "user", c.get("authRecord").get("id")).get("id")
+    const teacherByStudent = $app.findFirstRecordByData("students", "id", payload.student).get("teacher")
+    const teacherByAuth = $app.findFirstRecordByData("teachers", "user", c.auth.get("id")).get("id")
 
     const canAccess = teacherByStudent == teacherByAuth
     if (!canAccess) {
@@ -274,9 +351,9 @@ routerAdd("POST", "/api/class-logs/create-by-dates", (c) => {
             offset_hh_mm: payload.offset_hh_mm
         })
     );
-    const collection = $app.dao().findCollectionByNameOrId("class_logs")
+    const collection = $app.findCollectionByNameOrId("class_logs")
 
-    $app.dao().runInTransaction((txDao) => {
+    $app.runInTransaction((txDao) => {
         let checkData = null;
 
         for (let data of payloads) {
@@ -289,7 +366,7 @@ routerAdd("POST", "/api/class-logs/create-by-dates", (c) => {
 
             if (checkData == null) checkData = record;
 
-            txDao.saveRecord(record)
+            txDao.save(record)
         }
     })
 
@@ -297,7 +374,7 @@ routerAdd("POST", "/api/class-logs/create-by-dates", (c) => {
 })
 
 routerAdd("POST", "/api/class-logs/start", (c) => {
-    const payload = $apis.requestInfo(c).data
+    const payload = c.requestInfo().body
 
     const id = payload.id
     if (!id) throw ForbiddenError();
@@ -311,16 +388,16 @@ routerAdd("POST", "/api/class-logs/start", (c) => {
         return `${date} ${time}Z`;
     }
 
-    const record = $app.dao().findRecordById("class_logs", id)
+    const record = $app.findRecordById("class_logs", id)
 
-    $app.dao().runInTransaction((txDao) => {
+    $app.runInTransaction((txDao) => {
         record.set("started", true)
         record.set("start_at", getCurrentTime())
 
-        txDao.saveRecord(record)
+        txDao.save(record)
 
-        const teacherByStudent = $app.dao().findFirstRecordByData("students", "id", record.get("student")).get("teacher")
-        const teacherByAuth = $app.dao().findFirstRecordByData("teachers", "user", c.get("authRecord").get("id")).get("id")
+        const teacherByStudent = $app.findFirstRecordByData("students", "id", record.get("student")).get("teacher")
+        const teacherByAuth = $app.findFirstRecordByData("teachers", "user", c.auth.get("id")).get("id")
 
         const canAccess = teacherByStudent == teacherByAuth
         if (!canAccess) {
@@ -333,7 +410,7 @@ routerAdd("POST", "/api/class-logs/start", (c) => {
 })
 
 routerAdd("POST", "/api/class-logs/finish", (c) => {
-    const payload = $apis.requestInfo(c).data
+    const payload = c.requestInfo().body
 
     const id = payload.id
     if (!id) throw ForbiddenError();
@@ -352,12 +429,12 @@ routerAdd("POST", "/api/class-logs/finish", (c) => {
         return `${date} ${time}Z`;
     }
 
-    const record = $app.dao().findRecordById("class_logs", id)
+    const record = $app.findRecordById("class_logs", id)
 
-    const student = $app.dao().findRecordById("students", record.get("student"))
-    const monthly_package = $app.dao().findRecordById("monthly_packages", monthly_package_id.length > 0 ? monthly_package_id : student.get("monthly_package"))
+    const student = $app.findRecordById("students", record.get("student"))
+    const monthly_package = $app.findRecordById("monthly_packages", monthly_package_id.length > 0 ? monthly_package_id : student.get("monthly_package"))
 
-    $app.dao().runInTransaction((txDao) => {
+    $app.runInTransaction((txDao) => {
         record.set("feedback", feedback)
         record.set("cp_teacher", student.get("teacher"))
         record.set("cp_class_mins", monthly_package.get("class_mins"))
@@ -367,10 +444,10 @@ routerAdd("POST", "/api/class-logs/finish", (c) => {
         record.set("finished", true)
         record.set("finish_at", getCurrentTime())
 
-        txDao.saveRecord(record)
+        txDao.save(record)
 
-        const teacherByStudent = $app.dao().findFirstRecordByData("students", "id", record.get("student")).get("teacher")
-        const teacherByAuth = $app.dao().findFirstRecordByData("teachers", "user", c.get("authRecord").get("id")).get("id")
+        const teacherByStudent = $app.findFirstRecordByData("students", "id", record.get("student")).get("teacher")
+        const teacherByAuth = $app.findFirstRecordByData("teachers", "user", c.auth.get("id")).get("id")
 
         const canAccess = teacherByStudent == teacherByAuth
         if (!canAccess) {
@@ -383,10 +460,10 @@ routerAdd("POST", "/api/class-logs/finish", (c) => {
 })
 
 routerAdd("POST", "/api/generate-student-invoices", (c) => {
-    const payload = $apis.requestInfo(c).data
+    const payload = c.requestInfo().body
 
     // allow admin only
-    const admin = !!c.get("admin")
+    const admin = !!c.auth.get("superadmin")
     if (!admin) throw ForbiddenError()
 
     const yyyy_mm_dd = new Date().toISOString().slice(0, 10)
@@ -395,19 +472,20 @@ routerAdd("POST", "/api/generate-student-invoices", (c) => {
 
     const filter = payload.students && payload.students.length > 0 ? `${payload.students.map(e => `id = '${e}'`).join(" || ")}` : `id != 0`
 
-    const student_invoices = $app.dao().findCollectionByNameOrId("student_invoices")
-    const students = $app.dao().findRecordsByFilter(
+    const student_invoices = $app.findCollectionByNameOrId("student_invoices")
+    const students = $app.findRecordsByFilter(
         "students",
         filter
     )
 
-    $app.dao().runInTransaction((txDao) => {
+    const parent_invoices = $app.findCollectionByNameOrId("invoices")
+
+    $app.runInTransaction((txDao) => {
         const unq_id = Date.now()
-        const parent_invoices = $app.dao().findCollectionByNameOrId("invoices")
         const parent_record = new Record(parent_invoices)
         parent_record.set("unq_id", unq_id)
         parent_record.set("type", "STUDENT")
-        txDao.saveRecord(parent_record)
+        txDao.save(parent_record)
         const parent_invoice = txDao.findRecordsByFilter(
             "invoices",
             `unq_id = '${unq_id}'`,
@@ -436,16 +514,16 @@ routerAdd("POST", "/api/generate-student-invoices", (c) => {
 
             // calculate due amount
             const due_amount = student_class_logs.reduce((sum, record) => sum + record.publicExport().cp_students_price, 0);
-            
+
             // no invoice for zero amount
-            if(due_amount <= 0) continue;
+            if (due_amount <= 0) continue;
 
             // create invoice
             const record = new Record(student_invoices)
             record.set("student", student.get("id"))
             record.set("due_amount", due_amount)
             record.set("invoice", parent_invoice_id)
-            txDao.saveRecord(record)
+            txDao.save(record)
 
             // find the invoice
             const invoices = txDao.findRecordsByFilter(
@@ -460,7 +538,7 @@ routerAdd("POST", "/api/generate-student-invoices", (c) => {
             for (let class_log of student_class_logs) {
                 const found = txDao.findRecordById("class_logs", class_log.get("id"))
                 found.set("student_invoice", invoices[0].id)
-                txDao.saveRecord(found)
+                txDao.save(found)
             }
         }
     })
@@ -469,10 +547,10 @@ routerAdd("POST", "/api/generate-student-invoices", (c) => {
 })
 
 routerAdd("POST", "/api/generate-teacher-invoices", (c) => {
-    const payload = $apis.requestInfo(c).data
+    const payload = c.requestInfo().body
 
     // allow admin only
-    const admin = !!c.get("admin")
+    const admin = !!c.auth.get("superadmin")
     if (!admin) throw ForbiddenError()
 
     const yyyy_mm_dd = new Date().toISOString().slice(0, 10)
@@ -481,19 +559,20 @@ routerAdd("POST", "/api/generate-teacher-invoices", (c) => {
 
     const filter = payload.teachers && payload.teachers.length > 0 ? `${payload.teachers.map(e => `id = '${e}'`).join(" || ")}` : `id != 0`
 
-    const teacher_invoices = $app.dao().findCollectionByNameOrId("teacher_invoices")
-    const teachers = $app.dao().findRecordsByFilter(
+    const teacher_invoices = $app.findCollectionByNameOrId("teacher_invoices")
+    const teachers = $app.findRecordsByFilter(
         "teachers",
         filter
     )
 
-    $app.dao().runInTransaction((txDao) => {
+    const parent_invoices = $app.findCollectionByNameOrId("invoices")
+
+    $app.runInTransaction((txDao) => {
         const unq_id = Date.now()
-        const parent_invoices = $app.dao().findCollectionByNameOrId("invoices")
         const parent_record = new Record(parent_invoices)
         parent_record.set("unq_id", unq_id)
         parent_record.set("type", "TEACHER")
-        txDao.saveRecord(parent_record)
+        txDao.save(parent_record)
         const parent_invoice = txDao.findRecordsByFilter(
             "invoices",
             `unq_id = '${unq_id}'`,
@@ -523,14 +602,14 @@ routerAdd("POST", "/api/generate-teacher-invoices", (c) => {
             const due_amount = teacher_class_logs.reduce((sum, record) => sum + record.publicExport().cp_teachers_price, 0);
 
             // no invoice for zero amount
-            if(due_amount <= 0) continue;
-            
+            if (due_amount <= 0) continue;
+
             // create invoice
             const record = new Record(teacher_invoices)
             record.set("teacher", teacher.get("id"))
             record.set("due_amount", due_amount)
             record.set("invoice", parent_invoice_id)
-            txDao.saveRecord(record)
+            txDao.save(record)
 
             // find the invoice
             const invoices = txDao.findRecordsByFilter(
@@ -545,7 +624,7 @@ routerAdd("POST", "/api/generate-teacher-invoices", (c) => {
             for (let class_log of teacher_class_logs) {
                 const found = txDao.findRecordById("class_logs", class_log.get("id"))
                 found.set("teacher_invoice", invoices[0].id)
-                txDao.saveRecord(found)
+                txDao.save(found)
             }
         }
     })
@@ -554,9 +633,9 @@ routerAdd("POST", "/api/generate-teacher-invoices", (c) => {
 })
 
 routerAdd("GET", "/api/get-student-invoices", (c) => {
-    const user_id = c.get("authRecord").get("id");
+    const user_id = c.auth.get("id");
 
-    const invoices = $app.dao().findRecordsByFilter(
+    const invoices = $app.findRecordsByFilter(
         "student_invoices",
         `student.user.id = '${user_id}'`
     )
@@ -564,7 +643,7 @@ routerAdd("GET", "/api/get-student-invoices", (c) => {
     const res = []
 
     for (let invoice of invoices) {
-        const records = $app.dao().findRecordsByFilter(
+        const records = $app.findRecordsByFilter(
             "class_logs",
             `student_invoice = '${invoice.get("id")}'`
         )
@@ -582,9 +661,9 @@ routerAdd("GET", "/api/get-student-invoices", (c) => {
 })
 
 routerAdd("GET", "/api/get-teacher-invoices", (c) => {
-    const user_id = c.get("authRecord").get("id");
+    const user_id = c.auth.get("id");
 
-    const invoices = $app.dao().findRecordsByFilter(
+    const invoices = $app.findRecordsByFilter(
         "teacher_invoices",
         `teacher.user.id = '${user_id}'`
     )
@@ -592,7 +671,7 @@ routerAdd("GET", "/api/get-teacher-invoices", (c) => {
     const res = []
 
     for (let invoice of invoices) {
-        const records = $app.dao().findRecordsByFilter(
+        const records = $app.findRecordsByFilter(
             "class_logs",
             `teacher_invoice = '${invoice.get("id")}'`
         )
@@ -610,11 +689,11 @@ routerAdd("GET", "/api/get-teacher-invoices", (c) => {
 })
 
 routerAdd("GET", "/api/get-student-invoices/:id", (c) => {
-    const user_id = c.get("authRecord").get("id");
+    const user_id = c.auth.get("id");
 
     // filter by matching student and id
 
-    const invoice = $app.dao().findFirstRecordByFilter(
+    const invoice = $app.findFirstRecordByFilter(
         "student_invoices",
         `student.user.id = '${user_id}' && id = '${c.pathParam("id")}'`
     )
@@ -623,11 +702,11 @@ routerAdd("GET", "/api/get-student-invoices/:id", (c) => {
         throw new ForbiddenError()
     }
 
-    const records = $app.dao().findRecordsByFilter(
+    const records = $app.findRecordsByFilter(
         "class_logs",
         `student_invoice = '${c.pathParam("id")}'`
     )
-    $app.dao().expandRecords(records, ["student"], null)
+    $app.expandRecords(records, ["student"], null)
 
     const logs = []
     records.forEach(record => logs.push({
@@ -663,11 +742,11 @@ routerAdd("GET", "/api/get-student-invoices/:id", (c) => {
 })
 
 routerAdd("GET", "/api/get-teacher-invoices/:id", (c) => {
-    const user_id = c.get("authRecord").get("id");
+    const user_id = c.auth.get("id");
 
     // filter by matching teacher and id
 
-    const invoice = $app.dao().findFirstRecordByFilter(
+    const invoice = $app.findFirstRecordByFilter(
         "teacher_invoices",
         `teacher.user.id = '${user_id}' && id = '${c.pathParam("id")}'`
     )
@@ -676,11 +755,11 @@ routerAdd("GET", "/api/get-teacher-invoices/:id", (c) => {
         throw new ForbiddenError()
     }
 
-    const records = $app.dao().findRecordsByFilter(
+    const records = $app.findRecordsByFilter(
         "class_logs",
         `teacher_invoice = '${c.pathParam("id")}'`
     )
-    $app.dao().expandRecords(records, ["student"], null)
+    $app.expandRecords(records, ["student"], null)
 
     const logs = []
     records.forEach(record => logs.push({
@@ -718,7 +797,7 @@ routerAdd("GET", "/api/get-teacher-invoices/:id", (c) => {
 routerAdd("GET", "/api/get-invoiced-students", (c) => {
     // allow admin only
 
-    const admin = !!c.get("admin")
+    const admin = !!c.auth.get("superadmin")
     if (!admin) throw ForbiddenError()
 
     const result = arrayOf(new DynamicModel({
@@ -728,7 +807,7 @@ routerAdd("GET", "/api/get-invoiced-students", (c) => {
         "last_invoiced_at": "",
     }))
 
-    $app.dao().db()
+    $app.db()
         .newQuery("SELECT s.id, s.nickname, s.mobile_no,  COALESCE(si.created, '') AS last_invoiced_at FROM students s LEFT JOIN student_invoices si ON si.student = s.id AND si.created = ( SELECT MAX(si2.created) FROM student_invoices si2 WHERE si2.student = s.id )")
         .all(result)
 
@@ -738,7 +817,7 @@ routerAdd("GET", "/api/get-invoiced-students", (c) => {
 routerAdd("GET", "/api/get-invoiced-teachers", (c) => {
     // allow admin only
 
-    const admin = !!c.get("admin")
+    const admin = !!c.auth.get("superadmin")
     if (!admin) throw ForbiddenError()
 
     const result = arrayOf(new DynamicModel({
@@ -748,7 +827,7 @@ routerAdd("GET", "/api/get-invoiced-teachers", (c) => {
         "last_invoiced_at": "",
     }))
 
-    $app.dao().db()
+    $app.db()
         .newQuery("SELECT t.id, t.nickname, t.mobile_no, COALESCE(ti.created, '') AS last_invoiced_at FROM teachers t LEFT JOIN teacher_invoices ti ON ti.teacher = t.id AND ti.created = ( SELECT MAX(ti2.created) FROM teacher_invoices ti2 WHERE ti2.teacher = t.id )")
         .all(result)
 
@@ -756,7 +835,7 @@ routerAdd("GET", "/api/get-invoiced-teachers", (c) => {
 })
 
 routerAdd("DELETE", "/api/invoices/:id", (c) => {
-    const invoice = $app.dao().findFirstRecordByFilter(
+    const invoice = $app.findFirstRecordByFilter(
         "invoices",
         `id = '${c.pathParam("id")}'`
     )
@@ -765,9 +844,9 @@ routerAdd("DELETE", "/api/invoices/:id", (c) => {
         throw new ForbiddenError()
     }
 
-    $app.dao().runInTransaction((txDao) => {
-        if(invoice.get("type") == "TEACHER"){
-            const records = $app.dao().findRecordsByFilter(
+    $app.runInTransaction((txDao) => {
+        if (invoice.get("type") == "TEACHER") {
+            const records = $app.findRecordsByFilter(
                 "teacher_invoices",
                 `invoice.id = '${c.pathParam("id")}'`
             )
@@ -776,7 +855,7 @@ routerAdd("DELETE", "/api/invoices/:id", (c) => {
             }
         }
 
-        if(invoice.get("type") == "STUDENT"){
+        if (invoice.get("type") == "STUDENT") {
             const records = txDao.findRecordsByFilter(
                 "student_invoices",
                 `invoice.id = '${c.pathParam("id")}'`
@@ -796,7 +875,7 @@ routerAdd("DELETE", "/api/invoices/:id", (c) => {
 // HTML render
 
 routerAdd("GET", "/student-receipt/:id", (c) => {
-    const invoice = $app.dao().findFirstRecordByFilter(
+    const invoice = $app.findFirstRecordByFilter(
         "student_invoices",
         `id = '${c.pathParam("id")}'`
     )
@@ -805,9 +884,9 @@ routerAdd("GET", "/student-receipt/:id", (c) => {
         throw new ForbiddenError()
     }
 
-    $app.dao().expandRecord(invoice, ["student"], null)
-    
-    const records = $app.dao().findRecordsByFilter(
+    $app.expandRecord(invoice, ["student"], null)
+
+    const records = $app.findRecordsByFilter(
         "class_logs",
         `student_invoice = '${c.pathParam("id")}'`
     )
@@ -846,7 +925,7 @@ routerAdd("GET", "/student-receipt/:id", (c) => {
         `${__hooks}/views/student-receipt.html`,
     ).render({
         "id": invoice.get("id"),
-        "date": invoice.publicExport().created.toString().slice(0,10),
+        "date": invoice.publicExport().created.toString().slice(0, 10),
         "nickname": invoice.publicExport().expand.student.publicExport().nickname,
         "paid_amount": invoice.get("paid_amount"),
         "due_amount": invoice.get("due_amount"),
@@ -859,7 +938,7 @@ routerAdd("GET", "/student-receipt/:id", (c) => {
 })
 
 routerAdd("GET", "/teacher-receipt/:id", (c) => {
-    const invoice = $app.dao().findFirstRecordByFilter(
+    const invoice = $app.findFirstRecordByFilter(
         "teacher_invoices",
         `id = '${c.pathParam("id")}'`
     )
@@ -868,9 +947,9 @@ routerAdd("GET", "/teacher-receipt/:id", (c) => {
         throw new ForbiddenError()
     }
 
-    $app.dao().expandRecord(invoice, ["teacher"], null)
+    $app.expandRecord(invoice, ["teacher"], null)
 
-    const records = $app.dao().findRecordsByFilter(
+    const records = $app.findRecordsByFilter(
         "class_logs",
         `teacher_invoice = '${c.pathParam("id")}'`
     )
@@ -896,9 +975,9 @@ routerAdd("GET", "/teacher-receipt/:id", (c) => {
     // Convert the map into an array of unique combinations and their counts
     const uniqueLogsArray = Array.from(uniqueLogsMap, ([key, count]) => {
         const [class_mins, teachers_price] = key.split('-');
-        return { 
-            class_mins: Number(class_mins), 
-            unit_price: Number(teachers_price), 
+        return {
+            class_mins: Number(class_mins),
+            unit_price: Number(teachers_price),
             total_classes: count,
             total_price: count * Number(teachers_price)
         };
@@ -909,7 +988,7 @@ routerAdd("GET", "/teacher-receipt/:id", (c) => {
         `${__hooks}/views/teacher-receipt.html`,
     ).render({
         "id": invoice.get("id"),
-        "date": invoice.publicExport().created.toString().slice(0,10),
+        "date": invoice.publicExport().created.toString().slice(0, 10),
         "nickname": invoice.publicExport().expand.teacher.publicExport().nickname,
         "paid_amount": invoice.get("paid_amount"),
         "due_amount": invoice.get("due_amount"),
