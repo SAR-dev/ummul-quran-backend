@@ -1,4 +1,4 @@
-cronAdd("start-notify", "*/1 * * * *", () => {
+cronAdd("start-notify", "*/3 * * * *", () => {
     const currentTime = new Date();
     const tenMinutesLaterTime = new Date(currentTime.getTime() + 10 * 60 * 1000);
 
@@ -9,13 +9,13 @@ cronAdd("start-notify", "*/1 * * * *", () => {
             `start_at < '${tenMinutesLaterTime.toISOString()}' && start_notified = false && started = false`
         )
         for (let record of startNotificationNotSent) {
-            txDao.expandRecord(record, ["student", "cp_teacher"], null)
+            txDao.expandRecord(record, ["student"], null)
             const student = record.publicExport().expand.student;
+            txDao.expandRecord(record, ["cp_teacher"], null)
             const teacher = record.publicExport().expand.cp_teacher;
             const mobile_no = teacher.get("mobile_no").replace(/\D/g, '');
-            const message = `You have a class soon to start of ${student.get("nickname")}. URL: https://web.ummulquran.live/teacher/class-details/${record.get("id")}`
+            const message = `${student.get("nickname")} এর ক্লাস আর কিছুক্ষণ পরে শুরু হবে অনুগ্রহ করে সময় মতো জয়েন করবেন। URL: https://web.ummulquran.live/teacher/class-details/${record.get("id")}`
 
-            // console.log(message)
             const res = $http.send({
                 url: "http://104.194.132.235:3000/api/sendText",
                 method: "POST",
@@ -48,11 +48,12 @@ cronAdd("finish-notify", "*/10 * * * *", () => {
             `finish_at < '${tenMinutesBeforeTime.toISOString()}' && started = true && finish_notified = false && finished = false`
         )
         for (let fd of finishNotificationNotSent) {
-            txDao.expandRecord(record, ["student", "cp_teacher"], null)
+            txDao.expandRecord(record, ["student"], null)
             const student = record.publicExport().expand.student;
+            txDao.expandRecord(record, ["cp_teacher"], null)
             const teacher = record.publicExport().expand.cp_teacher;
             const mobile_no = teacher.get("mobile_no").replace(/\D/g, '');
-            const message = `You have a class pending of ${student.get("nickname")}. URL: https://web.ummulquran.live/teacher/class-details/${record.get("id")}`
+            const message = `${student.get("nickname")} এর ক্লাস আপনি এখনো ক্লোজ করেননি অনুগ্রহ করে অতি দ্রুত সাবমিট রিপোর্টে ক্লিক করে ক্লাসটি ক্লোজ করুন। URL: https://web.ummulquran.live/teacher/class-details/${record.get("id")}`
 
             // console.log(message)
             const res = $http.send({
