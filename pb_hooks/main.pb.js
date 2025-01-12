@@ -1,4 +1,4 @@
-cronAdd("start-notify", "*/3 * * * *", () => {
+cronAdd("start-notify", "*/1 * * * *", () => {
     const currentTime = new Date();
     const tenMinutesLaterTime = new Date(currentTime.getTime() + 10 * 60 * 1000);
 
@@ -282,7 +282,7 @@ routerAdd("POST", "/api/class-logs/create-by-routine", (c) => {
                 `start_at >= '${start_at_str}' && finished = false && student.id = '${payload.student}'`
             )
             for (let record of records) {
-                txDao.deleteRecord(record)
+                txDao.delete(record)
             }
         }
         let checkData = null;
@@ -504,7 +504,7 @@ routerAdd("POST", "/api/generate-student-invoices", (c) => {
                 `start_at < '${date}' && finished = false && student.id = '${student.get("id")}'`
             )
             for (let r of unfinished_class_logs) {
-                txDao.deleteRecord(r)
+                txDao.delete(r)
             }
 
             // filter class logs by date and student
@@ -590,7 +590,7 @@ routerAdd("POST", "/api/generate-teacher-invoices", (c) => {
                 `start_at < '${date}' && finished = false && student.teacher.id = '${teacher.get("id")}'`
             )
             for (let r of unfinished_class_logs) {
-                txDao.deleteRecord(r)
+                txDao.delete(r)
             }
 
             // filter class logs by date and student
@@ -852,7 +852,7 @@ routerAdd("DELETE", "/api/invoices/:id", (c) => {
                 `invoice.id = '${c.pathParam("id")}'`
             )
             for (let record of records) {
-                txDao.deleteRecord(record)
+                txDao.delete(record)
             }
         }
 
@@ -862,11 +862,11 @@ routerAdd("DELETE", "/api/invoices/:id", (c) => {
                 `invoice.id = '${c.pathParam("id")}'`
             )
             for (let record of records) {
-                txDao.deleteRecord(record)
+                txDao.delete(record)
             }
         }
 
-        txDao.deleteRecord(invoice)
+        txDao.delete(invoice)
 
     })
 
