@@ -1,81 +1,81 @@
-cronAdd("start-notify", "*/1 * * * *", () => {
-    const currentTime = new Date();
-    const tenMinutesLaterTime = new Date(currentTime.getTime() + 10 * 60 * 1000);
+// cronAdd("start-notify", "*/1 * * * *", () => {
+//     const currentTime = new Date();
+//     const tenMinutesLaterTime = new Date(currentTime.getTime() + 10 * 60 * 1000);
 
-    $app.runInTransaction((txDao) => {
-        // class not started yet, will be started within 10 minutes and not notified
-        const startNotificationNotSent = txDao.findRecordsByFilter(
-            "class_logs",
-            `start_at < '${tenMinutesLaterTime.toISOString()}' && start_notified = false && started = false`
-        )
-        for (let record of startNotificationNotSent) {
-            txDao.expandRecord(record, ["student"], null)
-            const student = record.publicExport().expand.student;
-            txDao.expandRecord(record, ["cp_teacher"], null)
-            const teacher = record.publicExport().expand.cp_teacher;
-            const mobile_no = teacher.get("mobile_no").replace(/\D/g, '');
-            const message = `${student.get("nickname")} এর ক্লাস আর কিছুক্ষণ পরে শুরু হবে অনুগ্রহ করে সময় মতো জয়েন করবেন। URL: https://web.ummulquran.live/teacher/class-details/${record.get("id")}`
+//     $app.runInTransaction((txDao) => {
+//         // class not started yet, will be started within 10 minutes and not notified
+//         const startNotificationNotSent = txDao.findRecordsByFilter(
+//             "class_logs",
+//             `start_at < '${tenMinutesLaterTime.toISOString()}' && start_notified = false && started = false`
+//         )
+//         for (let record of startNotificationNotSent) {
+//             txDao.expandRecord(record, ["student"], null)
+//             const student = record.publicExport().expand.student;
+//             txDao.expandRecord(record, ["cp_teacher"], null)
+//             const teacher = record.publicExport().expand.cp_teacher;
+//             const mobile_no = teacher.get("mobile_no").replace(/\D/g, '');
+//             const message = `${student.get("nickname")} এর ক্লাস আর কিছুক্ষণ পরে শুরু হবে অনুগ্রহ করে সময় মতো জয়েন করবেন। URL: https://web.ummulquran.live/teacher/class-details/${record.get("id")}`
 
-            const res = $http.send({
-                url: "http://104.194.132.235:3000/api/sendText",
-                method: "POST",
-                body: JSON.stringify({
-                    "chatId": `${mobile_no}@c.us`,
-                    "text": `${message}`,
-                    "session": "default"
-                }),
-                headers: { "content-type": "application/json" },
-                timeout: 20 // in seconds
-            });
+//             const res = $http.send({
+//                 url: "http://104.194.132.235:3000/api/sendText",
+//                 method: "POST",
+//                 body: JSON.stringify({
+//                     "chatId": `${mobile_no}@c.us`,
+//                     "text": `${message}`,
+//                     "session": "default"
+//                 }),
+//                 headers: { "content-type": "application/json" },
+//                 timeout: 20 // in seconds
+//             });
             
-            if (res.statusCode === 201) {
-                const found = txDao.findRecordById("class_logs", record.get("id"))
-                found.set("start_notified", true)
-                txDao.save(found)
-            }
-        }
-    })
-})
+//             if (res.statusCode === 201) {
+//                 const found = txDao.findRecordById("class_logs", record.get("id"))
+//                 found.set("start_notified", true)
+//                 txDao.save(found)
+//             }
+//         }
+//     })
+// })
 
-cronAdd("finish-notify", "*/10 * * * *", () => {
-    const currentTime = new Date();
-    const tenMinutesBeforeTime = new Date(currentTime.getTime() - 10 * 60 * 1000);
+// cronAdd("finish-notify", "*/10 * * * *", () => {
+//     const currentTime = new Date();
+//     const tenMinutesBeforeTime = new Date(currentTime.getTime() - 10 * 60 * 1000);
 
-    $app.runInTransaction((txDao) => {
-        // class not finished yet and not notified
-        const finishNotificationNotSent = txDao.findRecordsByFilter(
-            "class_logs",
-            `finish_at < '${tenMinutesBeforeTime.toISOString()}' && started = true && finish_notified = false && finished = false`
-        )
-        for (let fd of finishNotificationNotSent) {
-            txDao.expandRecord(record, ["student"], null)
-            const student = record.publicExport().expand.student;
-            txDao.expandRecord(record, ["cp_teacher"], null)
-            const teacher = record.publicExport().expand.cp_teacher;
-            const mobile_no = teacher.get("mobile_no").replace(/\D/g, '');
-            const message = `${student.get("nickname")} এর ক্লাস আপনি এখনো ক্লোজ করেননি অনুগ্রহ করে অতি দ্রুত সাবমিট রিপোর্টে ক্লিক করে ক্লাসটি ক্লোজ করুন। URL: https://web.ummulquran.live/teacher/class-details/${record.get("id")}`
+//     $app.runInTransaction((txDao) => {
+//         // class not finished yet and not notified
+//         const finishNotificationNotSent = txDao.findRecordsByFilter(
+//             "class_logs",
+//             `finish_at < '${tenMinutesBeforeTime.toISOString()}' && started = true && finish_notified = false && finished = false`
+//         )
+//         for (let fd of finishNotificationNotSent) {
+//             txDao.expandRecord(record, ["student"], null)
+//             const student = record.publicExport().expand.student;
+//             txDao.expandRecord(record, ["cp_teacher"], null)
+//             const teacher = record.publicExport().expand.cp_teacher;
+//             const mobile_no = teacher.get("mobile_no").replace(/\D/g, '');
+//             const message = `${student.get("nickname")} এর ক্লাস আপনি এখনো ক্লোজ করেননি অনুগ্রহ করে অতি দ্রুত সাবমিট রিপোর্টে ক্লিক করে ক্লাসটি ক্লোজ করুন। URL: https://web.ummulquran.live/teacher/class-details/${record.get("id")}`
 
-            // console.log(message)
-            const res = $http.send({
-                url: "http://104.194.132.235:3000/api/sendText",
-                method: "POST",
-                body: JSON.stringify({
-                    "chatId": `${mobile_no}@c.us`,
-                    "text": `${message}`,
-                    "session": "default"
-                }),
-                headers: { "content-type": "application/json" },
-                timeout: 20 // in seconds
-            });
+//             // console.log(message)
+//             const res = $http.send({
+//                 url: "http://104.194.132.235:3000/api/sendText",
+//                 method: "POST",
+//                 body: JSON.stringify({
+//                     "chatId": `${mobile_no}@c.us`,
+//                     "text": `${message}`,
+//                     "session": "default"
+//                 }),
+//                 headers: { "content-type": "application/json" },
+//                 timeout: 20 // in seconds
+//             });
 
-            if (res.statusCode === 201) {
-                const found = txDao.findRecordById("class_logs", fd.get("id"))
-                found.set("finish_notified", true)
-                txDao.save(found)
-            }
-        }
-    })
-})
+//             if (res.statusCode === 201) {
+//                 const found = txDao.findRecordById("class_logs", fd.get("id"))
+//                 found.set("finish_notified", true)
+//                 txDao.save(found)
+//             }
+//         }
+//     })
+// })
 
 routerAdd("POST", "/api/send-wh-message", (c) => {
     const payload = c.requestInfo().body
@@ -149,19 +149,7 @@ routerAdd("POST", "/api/send-wh-message", (c) => {
         .replaceAll("{{paid_amount}}", data.paid_amount)
         .replaceAll("{{id}}", data.id)
 
-    let error = true
-    const res = $http.send({
-        url: "http://104.194.132.235:3000/api/sendText",
-        method: "POST",
-        body: JSON.stringify({
-            "chatId": `${data.whatsapp_no}@c.us`,
-            "text": `${message}`,
-            "session": "default"
-        }),
-        headers: { "content-type": "application/json" },
-        timeout: 20 // in seconds
-    });
-    if (res.statusCode === 201) error = false;
+    const link = `https://wa.me/${data.whatsapp_no}?text=${encodeURIComponent(message)}`
 
     const updateData = {
         table: "",
@@ -169,16 +157,15 @@ routerAdd("POST", "/api/send-wh-message", (c) => {
         status: ""
     }
     updateData.id = data.id
+    updateData.status = "SUCCESS"
     if (payload.type == "TEACHER") updateData.table = "teacher_invoices";
     if (payload.type == "STUDENT") updateData.table = "student_invoices";
-    if (error) updateData.status = "ERROR"
-    if (!error) updateData.status = "SUCCESS"
 
     const record = $app.findRecordById(updateData.table, updateData.id)
     record.set("status", updateData.status)
     $app.save(record)
 
-    c.json(200, { "message": "Request processed!" });
+    c.json(200, { "link": link });
 });
 
 routerAdd("POST", "/api/class-logs/create-by-routine", (c) => {
