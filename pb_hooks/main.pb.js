@@ -676,14 +676,14 @@ routerAdd("GET", "/api/get-teacher-invoices", (c) => {
     return c.json(200, res)
 })
 
-routerAdd("GET", "/api/get-student-invoices/:id", (c) => {
+routerAdd("GET", "/api/get-student-invoices/{id}", (c) => {
     const user_id = c.auth.get("id");
 
     // filter by matching student and id
 
     const invoice = $app.findFirstRecordByFilter(
         "student_invoices",
-        `student.user.id = '${user_id}' && id = '${c.pathParam("id")}'`
+        `student.user.id = '${user_id}' && id = '${c.request.pathValue("id")}'`
     )
 
     if (invoice == null) {
@@ -692,7 +692,7 @@ routerAdd("GET", "/api/get-student-invoices/:id", (c) => {
 
     const records = $app.findRecordsByFilter(
         "class_logs",
-        `student_invoice = '${c.pathParam("id")}'`
+        `student_invoice = '${c.request.pathValue("id")}'`
     )
     $app.expandRecords(records, ["student"], null)
 
@@ -729,14 +729,14 @@ routerAdd("GET", "/api/get-student-invoices/:id", (c) => {
     })
 })
 
-routerAdd("GET", "/api/get-teacher-invoices/:id", (c) => {
+routerAdd("GET", "/api/get-teacher-invoices/{id}", (c) => {
     const user_id = c.auth.get("id");
 
     // filter by matching teacher and id
 
     const invoice = $app.findFirstRecordByFilter(
         "teacher_invoices",
-        `teacher.user.id = '${user_id}' && id = '${c.pathParam("id")}'`
+        `teacher.user.id = '${user_id}' && id = '${c.request.pathValue("id")}'`
     )
 
     if (invoice == null) {
@@ -745,7 +745,7 @@ routerAdd("GET", "/api/get-teacher-invoices/:id", (c) => {
 
     const records = $app.findRecordsByFilter(
         "class_logs",
-        `teacher_invoice = '${c.pathParam("id")}'`
+        `teacher_invoice = '${c.request.pathValue("id")}'`
     )
     $app.expandRecords(records, ["student"], null)
 
@@ -822,10 +822,15 @@ routerAdd("GET", "/api/get-invoiced-teachers", (c) => {
     return c.json(200, result)
 })
 
-routerAdd("DELETE", "/api/invoices/:id", (c) => {
-    const invoice = $app.findFirstRecordByFilter(
+routerAdd("DELETE", "/api/invoices/{id}", (c) => {
+    // allow admin only
+
+    const admin = !!c.auth.get("superadmin")
+    if (!admin) throw ForbiddenError()
+
+    const invoice = $app.findRecordById(
         "invoices",
-        `id = '${c.pathParam("id")}'`
+        `${c.request.pathValue("id")}`
     )
 
     if (invoice == null) {
@@ -836,7 +841,7 @@ routerAdd("DELETE", "/api/invoices/:id", (c) => {
         if (invoice.get("type") == "TEACHER") {
             const records = $app.findRecordsByFilter(
                 "teacher_invoices",
-                `invoice.id = '${c.pathParam("id")}'`
+                `invoice.id = '${c.request.pathValue("id")}'`
             )
             for (let record of records) {
                 txDao.delete(record)
@@ -846,7 +851,7 @@ routerAdd("DELETE", "/api/invoices/:id", (c) => {
         if (invoice.get("type") == "STUDENT") {
             const records = txDao.findRecordsByFilter(
                 "student_invoices",
-                `invoice.id = '${c.pathParam("id")}'`
+                `invoice.id = '${c.request.pathValue("id")}'`
             )
             for (let record of records) {
                 txDao.delete(record)
@@ -862,10 +867,10 @@ routerAdd("DELETE", "/api/invoices/:id", (c) => {
 
 // HTML render
 
-routerAdd("GET", "/student-receipt/:id", (c) => {
+routerAdd("GET", "/student-receipt/{id}", (c) => {
     const invoice = $app.findFirstRecordByFilter(
         "student_invoices",
-        `id = '${c.pathParam("id")}'`
+        `id = '${c.request.pathValue("id")}'`
     )
 
     if (invoice == null) {
@@ -876,7 +881,7 @@ routerAdd("GET", "/student-receipt/:id", (c) => {
 
     const records = $app.findRecordsByFilter(
         "class_logs",
-        `student_invoice = '${c.pathParam("id")}'`
+        `student_invoice = '${c.request.pathValue("id")}'`
     )
 
     const logs = []
@@ -925,10 +930,10 @@ routerAdd("GET", "/student-receipt/:id", (c) => {
     return c.html(200, html)
 })
 
-routerAdd("GET", "/teacher-receipt/:id", (c) => {
+routerAdd("GET", "/teacher-receipt/{id}", (c) => {
     const invoice = $app.findFirstRecordByFilter(
         "teacher_invoices",
-        `id = '${c.pathParam("id")}'`
+        `id = '${c.request.pathValue("id")}'`
     )
 
     if (invoice == null) {
@@ -939,7 +944,7 @@ routerAdd("GET", "/teacher-receipt/:id", (c) => {
 
     const records = $app.findRecordsByFilter(
         "class_logs",
-        `teacher_invoice = '${c.pathParam("id")}'`
+        `teacher_invoice = '${c.request.pathValue("id")}'`
     )
 
     const logs = []
