@@ -27,7 +27,7 @@
 //                 headers: { "content-type": "application/json" },
 //                 timeout: 20 // in seconds
 //             });
-            
+
 //             if (res.statusCode === 201) {
 //                 const found = txDao.findRecordById("class_logs", record.get("id"))
 //                 found.set("start_notified", true)
@@ -89,18 +89,29 @@ routerAdd("POST", "/api/send-wh-message", (c) => {
 
     const data = {
         id: "",
+        url: "",
         nickname: "",
         whatsapp_no: "",
-        year: "",
-        month: "",
+        start_date: "",
+        finish_date: "",
         due_amount: "",
-        paid_amount: ""
+        paid_amount: "",
+        bills: ""
     }
 
     const months = [
         "January", "February", "March", "April", "May", "June",
         "July", "August", "September", "October", "November", "December"
     ];
+
+    function formatDate(dateString) {
+        const date = new Date(dateString);
+        const day = String(date.getDate()).padStart(2, '0'); // Ensures 2-digit day
+        const monthName = months[date.getMonth()]; // Get the month name from the array
+        const year = date.getFullYear();
+
+        return `${day} ${monthName}, ${year}`;
+    }
 
     if (payload.type == "TEACHER") {
         const record = $app.findFirstRecordByFilter(
@@ -113,11 +124,47 @@ routerAdd("POST", "/api/send-wh-message", (c) => {
             throw new ForbiddenError()
         }
 
+        const records = $app.findRecordsByFilter(
+            "class_logs",
+            `teacher_invoice = '${payload.id}'`
+        )
+
+        const logs = []
+        records.forEach(record => logs.push({
+            class_mins: record.publicExport().cp_class_mins,
+            teachers_price: record.publicExport().cp_teachers_price
+        }))
+
+        // Map to store unique combinations of class_mins and students_price
+        const uniqueLogsMap = new Map();
+
+        logs.forEach(log => {
+            const key = `${log.class_mins}-${log.teachers_price}`;
+            if (uniqueLogsMap.has(key)) {
+                uniqueLogsMap.set(key, uniqueLogsMap.get(key) + 1);
+            } else {
+                uniqueLogsMap.set(key, 1);
+            }
+        });
+
+        // Convert the map into an array of unique combinations and their counts
+        const uniqueLogsArray = Array.from(uniqueLogsMap, ([key, count]) => {
+            const [class_mins, teachers_price] = key.split('-');
+            return { class_mins: Number(class_mins), teachers_price: Number(teachers_price), total_classes: count };
+        });
+
+        const bills = uniqueLogsArray.map(e => `\nPackage ${e.unit_price}TK/Class (${e.class_mins}Minutes)\nTotal Class: ${e.total_classes}\nInvoice for ${e.total_classes} Class ${e.total_classes} × ${e.unit_price} :  =  ${e.total_price}BDT\n`)
+
+        const minDate = new Date(Math.min(...records.map(e => new Date(e.publicExport().start_at).getTime())));
+        const maxDate = new Date(Math.max(...records.map(e => new Date(e.publicExport().start_at).getTime())));
+
         data.nickname = record.publicExport().expand.teacher.publicExport().nickname
         data.whatsapp_no = record.publicExport().expand.teacher.publicExport().mobile_no.replace(/\D/g, '')
-        data.year = record.publicExport().year
-        data.month = months[record.publicExport().month - 1]
         data.due_amount = record.publicExport().due_amount
+        data.url = `${c.requestInfo().headers["origin"]}/teacher-receipt/${record.publicExport().id}`
+        data.bills = bills
+        data.start_date = formatDate(minDate)
+        data.finish_date = formatDate(maxDate)
         data.id = record.publicExport().id
     }
 
@@ -132,22 +179,64 @@ routerAdd("POST", "/api/send-wh-message", (c) => {
             throw new ForbiddenError()
         }
 
+        const records = $app.findRecordsByFilter(
+            "class_logs",
+            `student_invoice = '${record.publicExport().id}'`
+        )
+
+        const logs = []
+        records.forEach(record => logs.push({
+            class_mins: record.publicExport().cp_class_mins,
+            teachers_price: record.publicExport().cp_teachers_price
+        }))
+
+        // Map to store unique combinations of class_mins and students_price
+        const uniqueLogsMap = new Map();
+
+        logs.forEach(log => {
+            const key = `${log.class_mins}-${log.teachers_price}`;
+            if (uniqueLogsMap.has(key)) {
+                uniqueLogsMap.set(key, uniqueLogsMap.get(key) + 1);
+            } else {
+                uniqueLogsMap.set(key, 1);
+            }
+        });
+
+        // Convert the map into an array of unique combinations and their counts
+        const uniqueLogsArray = Array.from(uniqueLogsMap, ([key, count]) => {
+            const [class_mins, teachers_price] = key.split('-');
+            return {
+                class_mins: Number(class_mins),
+                unit_price: Number(teachers_price),
+                total_classes: count,
+                total_price: count * Number(teachers_price)
+            };
+        });
+
+        const bills = uniqueLogsArray.map(e => `\nPackage ${e.unit_price}TK/Class (${e.class_mins}Minutes)\nTotal Class: ${e.total_classes}\nInvoice for ${e.total_classes} Class ${e.total_classes} × ${e.unit_price} :  =  ${e.total_price}BDT\n`)
+
+        const minDate = new Date(Math.min(...records.map(e => new Date(e.publicExport().start_at).getTime())));
+        const maxDate = new Date(Math.max(...records.map(e => new Date(e.publicExport().start_at).getTime())));
+
         data.nickname = record.publicExport().expand.student.publicExport().nickname
         data.whatsapp_no = record.publicExport().expand.student.publicExport().mobile_no.replace(/\D/g, '')
-        data.year = record.publicExport().year
-        data.month = months[record.publicExport().month - 1]
         data.due_amount = record.publicExport().due_amount
+        data.url = `${c.requestInfo().headers["origin"]}/student-receipt/${record.publicExport().id}`
+        data.bills = bills
+        data.start_date = formatDate(minDate)
+        data.finish_date = formatDate(maxDate)
         data.id = record.publicExport().id
     }
 
     const message = payload.message
         .replaceAll("{{nickname}}", data.nickname)
         .replaceAll("{{whatsapp_no}}", data.whatsapp_no)
-        .replaceAll("{{year}}", data.year)
-        .replaceAll("{{month}}", data.month)
+        .replaceAll("{{start_date}}", data.start_date)
+        .replaceAll("{{finish_date}}", data.finish_date)
         .replaceAll("{{due_amount}}", data.due_amount)
         .replaceAll("{{paid_amount}}", data.paid_amount)
-        .replaceAll("{{id}}", data.id)
+        .replaceAll("{{url}}", data.url)
+        .replaceAll("{{bills}}", data.bills)
 
     const link = `https://wa.me/${data.whatsapp_no}?text=${encodeURIComponent(message)}`
 
@@ -483,7 +572,6 @@ routerAdd("POST", "/api/generate-student-invoices", (c) => {
         )
         const parent_invoice_id = parent_invoice[0].id
 
-
         for (let student of students) {
             // clear unfinished class logs
             const unfinished_class_logs = txDao.findRecordsByFilter(
@@ -694,7 +782,6 @@ routerAdd("GET", "/api/get-student-invoices/{id}", (c) => {
         "class_logs",
         `student_invoice = '${c.request.pathValue("id")}'`
     )
-    $app.expandRecords(records, ["student"], null)
 
     const logs = []
     records.forEach(record => logs.push({
@@ -747,7 +834,6 @@ routerAdd("GET", "/api/get-teacher-invoices/{id}", (c) => {
         "class_logs",
         `teacher_invoice = '${c.request.pathValue("id")}'`
     )
-    $app.expandRecords(records, ["student"], null)
 
     const logs = []
     records.forEach(record => logs.push({
