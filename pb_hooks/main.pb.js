@@ -467,82 +467,74 @@ routerAdd("POST", "/api/generate-student-invoices", (c) => {
     const yyyy_mm_dd = new Date().toISOString().slice(0, 10)
     const hh_mm_ss = new Date().toISOString().slice(11, 23)
     const date = `${yyyy_mm_dd} ${hh_mm_ss}Z`;
-    
 
-    const filter = payload.students && payload.students.length > 0 ? `${payload.students.map(e => `id = '${e}'`).join(" || ")}` : `id != 0`
-    const student_invoices = $app.findCollectionByNameOrId("student_invoices")
-    
-    // get student data
-    const students = $app.findRecordsByFilter(
-        "students",
-        filter
-    )
-
-    const parent_invoices = $app.findCollectionByNameOrId("invoices")
+    const student_invoices_ref = $app.findCollectionByNameOrId("student_invoices")
+    const invoices_ref = $app.findCollectionByNameOrId("invoices")
 
     $app.runInTransaction((txDao) => {
         const unq_id = Date.now()
 
         // create invoices record
-        const parent_record = new Record(parent_invoices)
-        parent_record.set("unq_id", unq_id)
-        parent_record.set("type", "STUDENT")
-        txDao.save(parent_record)
+        const invoice_record = new Record(invoices_ref)
+        invoice_record.set("unq_id", unq_id)
+        invoice_record.set("type", "STUDENT")
+        txDao.save(invoice_record)
 
         // get invoice id
-        const parent_invoice = txDao.findRecordsByFilter(
-            "invoices",
-            `unq_id = '${unq_id}'`,
-            "-created",
-            1,
-            0,
-        )
-        const parent_invoice_id = parent_invoice[0].id
+        const invoice = txDao.findFirstRecordByFilter("invoices", `unq_id = '${unq_id}'`)
+        const invoice_id = invoice.id
 
-        for (let student of students) {
+        for (let student_id of payload.students) {
             // clear unfinished class logs
-            const unfinished_class_logs = txDao.findRecordsByFilter(
-                "class_logs",
-                `start_at < '${date}' && finished = false && student.id = '${student.get("id")}'`
-            )
-            for (let r of unfinished_class_logs) {
-                txDao.delete(r)
-            }
+            txDao.db()
+                .newQuery(`
+                    DELETE FROM class_logs 
+                    WHERE start_at < '${date}' 
+                    AND finished = false 
+                    AND student = '${student_id}'
+                `)
+                .execute()
 
             // filter class logs by date and student
-            const student_class_logs = txDao.findRecordsByFilter(
-                "class_logs",
-                `start_at < '${date}' && finished = true && student_invoice = '' && student.id = '${student.get("id")}'`
-            )
-
-            // calculate due amount
-            const due_amount = student_class_logs.reduce((sum, record) => sum + record.publicExport().cp_students_price, 0);
+            const class_result = new DynamicModel({
+                due_amount: ''
+            })
+            
+            txDao.db()
+                .newQuery(`
+                    SELECT COALESCE(SUM(cp_students_price), 0) AS due_amount
+                    FROM class_logs 
+                    WHERE start_at < '${date}' 
+                    AND finished = true
+                    AND student_invoice = ''
+                    AND student = '${student_id}'
+                `)
+                .one(class_result)
 
             // no invoice for zero amount
-            if (due_amount <= 0) continue;
+            if (Number(class_result.due_amount) <= 0) continue;
 
             // create student invoice
-            const record = new Record(student_invoices)
-            record.set("student", student.get("id"))
-            record.set("due_amount", due_amount)
-            record.set("invoice", parent_invoice_id)
+            const record = new Record(student_invoices_ref)
+            record.set("student", student_id)
+            record.set("due_amount", Number(class_result.due_amount))
+            record.set("invoice", invoice_id)
             txDao.save(record)
 
             // find the student invoice
-            const invoices = txDao.findRecordsByFilter(
-                "student_invoices",
-                `student = '${student.get("id")}'`,
-                "-created",
-                1,
-                0,
-            )
+            const student_invoice = txDao.findFirstRecordByFilter("student_invoices", `student = '${student_id}'`)
 
             // update class logs with invoice id
-            for (let class_log of student_class_logs) {
-                const found = txDao.findRecordById("class_logs", class_log.get("id"))
-                found.set("student_invoice", invoices[0].id)
-                txDao.save(found)
-            }
+            txDao.db()
+                .newQuery(`
+                    UPDATE class_logs 
+                    SET student_invoice = '${student_invoice.id}'
+                    WHERE start_at < '${date}' 
+                    AND finished = true
+                    AND student_invoice = ''
+                    AND student = '${student_id}'
+                `)
+                .execute()
         }
     })
 
@@ -560,75 +552,80 @@ routerAdd("POST", "/api/generate-teacher-invoices", (c) => {
     const hh_mm_ss = new Date().toISOString().slice(11, 23)
     const date = `${yyyy_mm_dd} ${hh_mm_ss}Z`;
 
-    const filter = payload.teachers && payload.teachers.length > 0 ? `${payload.teachers.map(e => `id = '${e}'`).join(" || ")}` : `id != 0`
-
-    const teacher_invoices = $app.findCollectionByNameOrId("teacher_invoices")
-    const teachers = $app.findRecordsByFilter(
-        "teachers",
-        filter
-    )
-
-    const parent_invoices = $app.findCollectionByNameOrId("invoices")
+    const teacher_invoices_ref = $app.findCollectionByNameOrId("teacher_invoices")
+    const invoices_ref = $app.findCollectionByNameOrId("invoices")
 
     $app.runInTransaction((txDao) => {
         const unq_id = Date.now()
-        const parent_record = new Record(parent_invoices)
-        parent_record.set("unq_id", unq_id)
-        parent_record.set("type", "TEACHER")
-        txDao.save(parent_record)
-        const parent_invoice = txDao.findRecordsByFilter(
-            "invoices",
-            `unq_id = '${unq_id}'`,
-            "-created",
-            1,
-            0,
-        )
-        const parent_invoice_id = parent_invoice[0].id
 
-        for (let teacher of teachers) {
+        // create invoice record
+        const invoice_record = new Record(invoices_ref)
+        invoice_record.set("unq_id", unq_id)
+        invoice_record.set("type", "TEACHER")
+        txDao.save(invoice_record)
+
+        // get invoice id
+        const invoice = txDao.findFirstRecordByFilter("invoices", `unq_id = '${unq_id}'`)
+        const invoice_id = invoice.id
+
+        console.log(payload.teachers)
+        for (let teacher_id of payload.teachers) {
             // clear unfinished class logs
-            const unfinished_class_logs = txDao.findRecordsByFilter(
-                "class_logs",
-                `start_at < '${date}' && finished = false && student.teacher.id = '${teacher.get("id")}'`
-            )
-            for (let r of unfinished_class_logs) {
-                txDao.delete(r)
-            }
+            txDao.db()
+                .newQuery(`
+                    DELETE FROM class_logs 
+                    WHERE start_at < '${date}' 
+                    AND finished = false 
+                    AND student IN (
+                        SELECT id FROM students WHERE teacher = '${teacher_id}'
+                    )
+                `)
+                .execute()
 
-            // filter class logs by date and student
-            const teacher_class_logs = txDao.findRecordsByFilter(
-                "class_logs",
-                `start_at < '${date}' && finished = true && teacher_invoice = '' && student.teacher.id = '${teacher.get("id")}'`
-            )
-
-            // calculate due amount
-            const due_amount = teacher_class_logs.reduce((sum, record) => sum + record.publicExport().cp_teachers_price, 0);
+            // filter class logs by date and teacher
+            const class_result = new DynamicModel({
+                due_amount: ''
+            })
+            
+            txDao.db()
+                .newQuery(`
+                    SELECT COALESCE(SUM(cp_teachers_price), 0) AS due_amount
+                    FROM class_logs 
+                    WHERE start_at < '${date}' 
+                    AND finished = true
+                    AND teacher_invoice = ''
+                    AND student IN (
+                        SELECT id FROM students WHERE teacher = '${teacher_id}'
+                    )
+                `)
+                .one(class_result)
 
             // no invoice for zero amount
-            if (due_amount <= 0) continue;
+            if (Number(class_result.due_amount) <= 0) continue;
 
-            // create invoice
-            const record = new Record(teacher_invoices)
-            record.set("teacher", teacher.get("id"))
-            record.set("due_amount", due_amount)
-            record.set("invoice", parent_invoice_id)
+            // create teacher invoice
+            const record = new Record(teacher_invoices_ref)
+            record.set("teacher", teacher_id)
+            record.set("due_amount", Number(class_result.due_amount))
+            record.set("invoice", invoice_id)
             txDao.save(record)
 
-            // find the invoice
-            const invoices = txDao.findRecordsByFilter(
-                "teacher_invoices",
-                `teacher = '${teacher.get("id")}'`,
-                "-created",
-                1,
-                0,
-            )
+            // find the teacher invoice
+            const teacher_invoice = txDao.findFirstRecordByFilter("teacher_invoices", `teacher = '${teacher_id}'`)
 
             // update class logs with invoice id
-            for (let class_log of teacher_class_logs) {
-                const found = txDao.findRecordById("class_logs", class_log.get("id"))
-                found.set("teacher_invoice", invoices[0].id)
-                txDao.save(found)
-            }
+            txDao.db()
+                .newQuery(`
+                    UPDATE class_logs 
+                    SET teacher_invoice = '${teacher_invoice.id}'
+                    WHERE start_at < '${date}' 
+                    AND finished = true
+                    AND student_invoice = ''
+                    AND student IN (
+                        SELECT id FROM students WHERE teacher = '${teacher_id}'
+                    )
+                `)
+                .execute()
         }
     })
 
@@ -870,7 +867,7 @@ routerAdd("DELETE", "/api/invoices/{id}", (c) => {
         throw new ForbiddenError()
     }
 
-    if (invoice.get("type") == "TEACHER"){
+    if (invoice.get("type") == "TEACHER") {
         $app.db()
             .newQuery(`DELETE FROM teacher_invoices WHERE invoice = {:id}`)
             .bind({
@@ -879,7 +876,7 @@ routerAdd("DELETE", "/api/invoices/{id}", (c) => {
             .execute()
     }
 
-    if (invoice.get("type") == "STUDENT"){
+    if (invoice.get("type") == "STUDENT") {
         $app.db()
             .newQuery(`DELETE FROM student_invoices WHERE invoice = {:id}`)
             .bind({
