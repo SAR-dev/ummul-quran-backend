@@ -1,82 +1,3 @@
-// cronAdd("start-notify", "*/1 * * * *", () => {
-//     const currentTime = new Date();
-//     const tenMinutesLaterTime = new Date(currentTime.getTime() + 10 * 60 * 1000);
-
-//     $app.runInTransaction((txDao) => {
-//         // class not started yet, will be started within 10 minutes and not notified
-//         const startNotificationNotSent = txDao.findRecordsByFilter(
-//             "class_logs",
-//             `start_at < '${tenMinutesLaterTime.toISOString()}' && start_notified = false && started = false`
-//         )
-//         for (let record of startNotificationNotSent) {
-//             txDao.expandRecord(record, ["student"], null)
-//             const student = record.publicExport().expand.student;
-//             txDao.expandRecord(record, ["cp_teacher"], null)
-//             const teacher = record.publicExport().expand.cp_teacher;
-//             const mobile_no = teacher.get("mobile_no").replace(/\D/g, '');
-//             const message = `${student.get("nickname")} এর ক্লাস আর কিছুক্ষণ পরে শুরু হবে অনুগ্রহ করে সময় মতো জয়েন করবেন। URL: https://web.ummulquran.live/teacher/class-details/${record.get("id")}`
-
-//             const res = $http.send({
-//                 url: "http://104.194.132.235:3000/api/sendText",
-//                 method: "POST",
-//                 body: JSON.stringify({
-//                     "chatId": `${mobile_no}@c.us`,
-//                     "text": `${message}`,
-//                     "session": "default"
-//                 }),
-//                 headers: { "content-type": "application/json" },
-//                 timeout: 20 // in seconds
-//             });
-
-//             if (res.statusCode === 201) {
-//                 const found = txDao.findRecordById("class_logs", record.get("id"))
-//                 found.set("start_notified", true)
-//                 txDao.save(found)
-//             }
-//         }
-//     })
-// })
-
-// cronAdd("finish-notify", "*/10 * * * *", () => {
-//     const currentTime = new Date();
-//     const tenMinutesBeforeTime = new Date(currentTime.getTime() - 10 * 60 * 1000);
-
-//     $app.runInTransaction((txDao) => {
-//         // class not finished yet and not notified
-//         const finishNotificationNotSent = txDao.findRecordsByFilter(
-//             "class_logs",
-//             `finish_at < '${tenMinutesBeforeTime.toISOString()}' && started = true && finish_notified = false && finished = false`
-//         )
-//         for (let fd of finishNotificationNotSent) {
-//             txDao.expandRecord(record, ["student"], null)
-//             const student = record.publicExport().expand.student;
-//             txDao.expandRecord(record, ["cp_teacher"], null)
-//             const teacher = record.publicExport().expand.cp_teacher;
-//             const mobile_no = teacher.get("mobile_no").replace(/\D/g, '');
-//             const message = `${student.get("nickname")} এর ক্লাস আপনি এখনো ক্লোজ করেননি অনুগ্রহ করে অতি দ্রুত সাবমিট রিপোর্টে ক্লিক করে ক্লাসটি ক্লোজ করুন। URL: https://web.ummulquran.live/teacher/class-details/${record.get("id")}`
-
-//             // console.log(message)
-//             const res = $http.send({
-//                 url: "http://104.194.132.235:3000/api/sendText",
-//                 method: "POST",
-//                 body: JSON.stringify({
-//                     "chatId": `${mobile_no}@c.us`,
-//                     "text": `${message}`,
-//                     "session": "default"
-//                 }),
-//                 headers: { "content-type": "application/json" },
-//                 timeout: 20 // in seconds
-//             });
-
-//             if (res.statusCode === 201) {
-//                 const found = txDao.findRecordById("class_logs", fd.get("id"))
-//                 found.set("finish_notified", true)
-//                 txDao.save(found)
-//             }
-//         }
-//     })
-// })
-
 routerAdd("POST", "/api/send-wh-message", (c) => {
     const payload = c.requestInfo().body
 
@@ -546,10 +467,12 @@ routerAdd("POST", "/api/generate-student-invoices", (c) => {
     const yyyy_mm_dd = new Date().toISOString().slice(0, 10)
     const hh_mm_ss = new Date().toISOString().slice(11, 23)
     const date = `${yyyy_mm_dd} ${hh_mm_ss}Z`;
+    
 
     const filter = payload.students && payload.students.length > 0 ? `${payload.students.map(e => `id = '${e}'`).join(" || ")}` : `id != 0`
-
     const student_invoices = $app.findCollectionByNameOrId("student_invoices")
+    
+    // get student data
     const students = $app.findRecordsByFilter(
         "students",
         filter
@@ -559,10 +482,14 @@ routerAdd("POST", "/api/generate-student-invoices", (c) => {
 
     $app.runInTransaction((txDao) => {
         const unq_id = Date.now()
+
+        // create invoices record
         const parent_record = new Record(parent_invoices)
         parent_record.set("unq_id", unq_id)
         parent_record.set("type", "STUDENT")
         txDao.save(parent_record)
+
+        // get invoice id
         const parent_invoice = txDao.findRecordsByFilter(
             "invoices",
             `unq_id = '${unq_id}'`,
@@ -594,14 +521,14 @@ routerAdd("POST", "/api/generate-student-invoices", (c) => {
             // no invoice for zero amount
             if (due_amount <= 0) continue;
 
-            // create invoice
+            // create student invoice
             const record = new Record(student_invoices)
             record.set("student", student.get("id"))
             record.set("due_amount", due_amount)
             record.set("invoice", parent_invoice_id)
             txDao.save(record)
 
-            // find the invoice
+            // find the student invoice
             const invoices = txDao.findRecordsByFilter(
                 "student_invoices",
                 `student = '${student.get("id")}'`,
@@ -868,6 +795,7 @@ routerAdd("GET", "/api/get-teacher-invoices/{id}", (c) => {
     })
 })
 
+// OPTIMIZED
 routerAdd("GET", "/api/get-invoiced-students", (c) => {
     // allow admin only
 
@@ -875,19 +803,30 @@ routerAdd("GET", "/api/get-invoiced-students", (c) => {
     if (!admin) throw ForbiddenError()
 
     const result = arrayOf(new DynamicModel({
-        "id": "",
-        "nickname": "",
-        "mobile_no": "",
-        "last_invoiced_at": "",
+        id: "",
+        nickname: "",
+        mobile_no: "",
+        last_invoiced_at: "",
     }))
 
     $app.db()
-        .newQuery("SELECT s.id, s.nickname, s.mobile_no,  COALESCE(si.created, '') AS last_invoiced_at FROM students s LEFT JOIN student_invoices si ON si.student = s.id AND si.created = ( SELECT MAX(si2.created) FROM student_invoices si2 WHERE si2.student = s.id )")
+        .newQuery(`
+            SELECT 
+                s.id, 
+                s.nickname, 
+                s.mobile_no,  
+                COALESCE(si.created, '') AS last_invoiced_at 
+            FROM students s 
+            LEFT JOIN student_invoices si ON si.student = s.id AND si.created = ( 
+                SELECT MAX(si2.created) FROM student_invoices si2 WHERE si2.student = s.id 
+            )
+        `)
         .all(result)
 
     return c.json(200, result)
 })
 
+// OPTIMIZED
 routerAdd("GET", "/api/get-invoiced-teachers", (c) => {
     // allow admin only
 
@@ -895,58 +834,59 @@ routerAdd("GET", "/api/get-invoiced-teachers", (c) => {
     if (!admin) throw ForbiddenError()
 
     const result = arrayOf(new DynamicModel({
-        "id": "",
-        "nickname": "",
-        "mobile_no": "",
-        "last_invoiced_at": "",
+        id: "",
+        nickname: "",
+        mobile_no: "",
+        last_invoiced_at: "",
     }))
 
     $app.db()
-        .newQuery("SELECT t.id, t.nickname, t.mobile_no, COALESCE(ti.created, '') AS last_invoiced_at FROM teachers t LEFT JOIN teacher_invoices ti ON ti.teacher = t.id AND ti.created = ( SELECT MAX(ti2.created) FROM teacher_invoices ti2 WHERE ti2.teacher = t.id )")
+        .newQuery(`
+            SELECT 
+                t.id, 
+                t.nickname, 
+                t.mobile_no, 
+                COALESCE(ti.created, '') AS last_invoiced_at 
+            FROM teachers t 
+            LEFT JOIN teacher_invoices ti ON ti.teacher = t.id AND ti.created = ( 
+                SELECT MAX(ti2.created) FROM teacher_invoices ti2 WHERE ti2.teacher = t.id 
+            )
+        `)
         .all(result)
 
     return c.json(200, result)
 })
 
+// OPTIMIZED
 routerAdd("DELETE", "/api/invoices/{id}", (c) => {
     // allow admin only
 
     const admin = !!c.auth.get("superadmin")
     if (!admin) throw ForbiddenError()
 
-    const invoice = $app.findRecordById(
-        "invoices",
-        `${c.request.pathValue("id")}`
-    )
+    const invoice = $app.findRecordById("invoices", c.request.pathValue("id"))
 
     if (invoice == null) {
         throw new ForbiddenError()
     }
 
-    $app.runInTransaction((txDao) => {
-        if (invoice.get("type") == "TEACHER") {
-            const records = $app.findRecordsByFilter(
-                "teacher_invoices",
-                `invoice.id = '${c.request.pathValue("id")}'`
-            )
-            for (let record of records) {
-                txDao.delete(record)
-            }
-        }
+    if (invoice.get("type") == "TEACHER"){
+        $app.db()
+            .newQuery(`DELETE FROM teacher_invoices WHERE invoice = {:id}`)
+            .bind({
+                id: c.request.pathValue("id")
+            })
+            .execute()
+    }
 
-        if (invoice.get("type") == "STUDENT") {
-            const records = txDao.findRecordsByFilter(
-                "student_invoices",
-                `invoice.id = '${c.request.pathValue("id")}'`
-            )
-            for (let record of records) {
-                txDao.delete(record)
-            }
-        }
-
-        txDao.delete(invoice)
-
-    })
+    if (invoice.get("type") == "STUDENT"){
+        $app.db()
+            .newQuery(`DELETE FROM student_invoices WHERE invoice = {:id}`)
+            .bind({
+                id: c.request.pathValue("id")
+            })
+            .execute()
+    }
 
     return c.json(200, { "message": "Invoice deleted" })
 })
